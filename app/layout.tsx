@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import BottomNav from './components/BottomNav'
 
 export const metadata: Metadata = {
   title: 'Sillage — 향수 추천',
@@ -14,12 +15,16 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&display=swap"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <BottomNav />
+      </body>
     </html>
   )
 }

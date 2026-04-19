@@ -1,11 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import PerfumeInput from './components/PerfumeInput'
 
 interface Recommendation {
   name: string
   brand: string
-  notes: string[]
+  top_notes: string[]
+  middle_notes: string[]
+  base_notes: string[]
   reason: string
 }
 
@@ -14,225 +17,398 @@ interface RecommendResult {
   recommendations: Recommendation[]
 }
 
+const SITUATIONS = [
+  { label: '일상', emoji: '☀️' },
+  { label: '소개팅', emoji: '💕' },
+  { label: '비즈니스', emoji: '💼' },
+  { label: '특별한 날', emoji: '✨' },
+  { label: '운동', emoji: '🏃' },
+  { label: '여행', emoji: '✈️' },
+]
+
+const NOTE_LAYERS = [
+  { key: 'top_notes' as const,    label: 'Top',    sublabel: '탑노트',    color: '#F9A8D4', bg: '#FFF1F8' },
+  { key: 'middle_notes' as const, label: 'Middle', sublabel: '미들노트',  color: '#A78BFA', bg: '#F5F3FF' },
+  { key: 'base_notes' as const,   label: 'Base',   sublabel: '베이스노트', color: '#6B7280', bg: '#F3F4F6' },
+]
+
 export default function Home() {
-  const [input, setInput] = useState('')
   const [perfumes, setPerfumes] = useState<string[]>([])
+  const [dislikedPerfumes, setDislikedPerfumes] = useState<string[]>([])
+  const [situation, setSituation] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<RecommendResult | null>(null)
   const [error, setError] = useState('')
+  const isFirstRender = useRef(true)
+  const isFirstRenderDisliked = useRef(true)
 
-  const addPerfume = () => {
-    const val = input.trim()
-    if (!val || perfumes.includes(val) || perfumes.length >= 10) return
-    setPerfumes([...perfumes, val])
-    setInput('')
-  }
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('my_perfumes') ?? '[]')
+      if (saved.length > 0) setPerfumes(saved)
+    } catch {}
+  }, [])
 
-  const removePerfume = (i: number) => {
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('disliked_perfumes') ?? '[]')
+      if (saved.length > 0) setDislikedPerfumes(saved)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    localStorage.setItem('my_perfumes', JSON.stringify(perfumes))
+  }, [perfumes])
+
+  useEffect(() => {
+    if (isFirstRenderDisliked.current) { isFirstRenderDisliked.current = false; return }
+    localStorage.setItem('disliked_perfumes', JSON.stringify(dislikedPerfumes))
+  }, [dislikedPerfumes])
+
+  const removePerfume = (i: number) =>
     setPerfumes(perfumes.filter((_, idx) => idx !== i))
-  }
+
+  const removeDisliked = (i: number) =>
+    setDislikedPerfumes(dislikedPerfumes.filter((_, idx) => idx !== i))
 
   const handleRecommend = async () => {
     if (perfumes.length === 0) return
-    setLoading(true)
-    setResult(null)
-    setError('')
-
+    setLoading(true); setResult(null); setError('')
     try {
       const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ perfumes }),
+        body: JSON.stringify({ perfumes, dislikedPerfumes: dislikedPerfumes.length > 0 ? dislikedPerfumes : undefined, situation }),
       })
-      if (!res.ok) throw new Error('API 오류')
+      if (!res.ok) throw new Error()
       const data = await res.json()
       setResult(data)
+      try {
+        const prev = JSON.parse(localStorage.getItem('recommend_logs') ?? '[]')
+        const log = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+          inputPerfumes: perfumes,
+          situation,
+          tasteSummary: data.taste_summary,
+          recommendations: data.recommendations,
+        }
+        localStorage.setItem('recommend_logs', JSON.stringify([log, ...prev].slice(0, 20)))
+      } catch {}
     } catch {
-      setError('추천을 불러오는 중 오류가 발생했어요. 다시 시도해 주세요.')
+      setError('추천을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <main style={{ position: 'relative', zIndex: 1 }}>
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '0 1.5rem' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 80 }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '0 20px' }}>
 
-        {/* Header */}
-        <header style={{ padding: '4rem 0 3rem', textAlign: 'center', animation: 'fadeUp 0.8s ease both' }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 48, height: 48, border: '1px solid var(--gold)', borderRadius: '50%', marginBottom: '1.5rem'
-          }}>
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 2 C10 2 6 6 6 10 C6 13 7.5 15.5 10 17 C12.5 15.5 14 13 14 10 C14 6 10 2 10 2Z"
-                stroke="#B8975A" strokeWidth="1" fill="none" />
-              <circle cx="10" cy="10" r="2" fill="#B8975A" opacity="0.5" />
-            </svg>
-          </div>
-          <div style={{ fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '0.75rem' }}>
-            Sillage
-          </div>
-          <h1 style={{
-            fontFamily: "'Cormorant Garamond', serif", fontSize: 'clamp(2.2rem, 6vw, 3.2rem)',
-            fontWeight: 300, lineHeight: 1.15, color: 'var(--ink)', marginBottom: '1rem'
-          }}>
-            당신의 향수 취향을<br />
-            <em style={{ fontStyle: 'italic', color: 'var(--accent)' }}>분석</em>해 드립니다
-          </h1>
-          <p style={{ fontSize: 14, fontWeight: 300, color: 'var(--ink-muted)', lineHeight: 1.7, maxWidth: 420, margin: '0 auto' }}>
-            좋아하는 향수를 입력하면 AI가 취향을 분석하고 아직 써보지 않은 향수를 추천해 드려요.
+        {/* ── 헤더 ── */}
+        <header style={{ padding: '28px 0 24px', animation: 'fadeUp 0.45s ease both' }}>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)',
+            letterSpacing: '-0.5px', marginBottom: 6 }}>취향 분석</h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            좋아하는 향수를 입력하면 AI가 취향을 파악하고<br />딱 맞는 향수를 추천해 드려요.
           </p>
         </header>
 
-        {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0 0 2.5rem', animation: 'fadeUp 0.8s 0.1s ease both' }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          <span style={{ color: 'var(--gold)', fontSize: 16, opacity: 0.7 }}>✦</span>
-          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-        </div>
+        {/* ── 향수 입력 카드 ── */}
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
+          padding: '20px', marginBottom: 12, boxShadow: 'var(--shadow-sm)',
+          animation: 'fadeUp 0.45s 0.06s ease both',
+        }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)',
+            marginBottom: 12 }}>내가 좋아하는 향수</p>
 
-        {/* Input */}
-        <div style={{ animation: 'fadeUp 0.8s 0.2s ease both' }}>
-          <p style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--ink-muted)', marginBottom: '1rem' }}>
-            향수 입력
-          </p>
-
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addPerfume()}
-              placeholder="예: Chanel No.5, 딥디크 올로즈, Jo Malone Peony..."
-              style={{
-                flex: 1, height: 48, padding: '0 16px',
-                fontFamily: "'DM Sans', sans-serif", fontSize: 14, fontWeight: 300,
-                background: 'var(--card-bg)', border: '1px solid var(--border)',
-                borderRadius: 4, color: 'var(--ink)', outline: 'none',
-              }}
+          <div style={{ marginBottom: 14 }}>
+            <PerfumeInput
+              onAdd={p => { if (!perfumes.includes(p)) setPerfumes(prev => [...prev, p]) }}
+              placeholder="향수명 또는 브랜드 검색..."
+              variant="liked"
+              excludes={perfumes}
+              maxReached={perfumes.length >= 10}
             />
-            <button
-              onClick={addPerfume}
-              style={{
-                height: 48, padding: '0 20px', fontFamily: "'DM Sans', sans-serif",
-                fontSize: 13, fontWeight: 500, background: 'var(--ink)', color: 'var(--cream)',
-                border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap',
-              }}
-            >
-              추가
-            </button>
           </div>
 
-          {/* Tags */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minHeight: 32, marginBottom: '0.75rem' }}>
-            {perfumes.map((p, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '6px 14px', background: 'var(--card-bg)',
-                border: '1px solid var(--border)', borderRadius: 99,
-                fontSize: 13, color: 'var(--ink)', animation: 'tagIn 0.2s ease both',
-              }}>
-                <span>{p}</span>
-                <span onClick={() => removePerfume(i)} style={{ cursor: 'pointer', color: 'var(--ink-light)', fontSize: 18, lineHeight: 1 }}>×</span>
-              </div>
-            ))}
-          </div>
+          {perfumes.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+              {perfumes.map((p, i) => (
+                <div key={i} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '5px 12px', background: 'var(--primary-subtle)',
+                  border: '1px solid rgba(160,82,122,0.2)', borderRadius: 99,
+                  fontSize: 13, fontWeight: 500, color: 'var(--primary)',
+                  animation: 'tagIn 0.18s ease both',
+                }}>
+                  <span>{p}</span>
+                  <span onClick={() => removePerfume(i)}
+                    style={{ fontSize: 15, cursor: 'pointer', lineHeight: 1, opacity: 1, transition: 'opacity 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.5'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >×</span>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <p style={{ fontSize: 12, color: 'var(--ink-light)', fontWeight: 300, marginBottom: '2rem' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
             {perfumes.length === 0
-              ? '최소 1개, 최대 10개까지 입력할 수 있어요.'
-              : `${perfumes.length}개 입력됨 · 최대 ${10 - perfumes.length}개 더 추가 가능`}
+              ? '최소 1개, 최대 10개까지 추가할 수 있어요'
+              : `${perfumes.length}개 추가됨 · ${10 - perfumes.length}개 더 추가 가능`}
           </p>
-
-          <button
-            onClick={handleRecommend}
-            disabled={perfumes.length === 0 || loading}
-            style={{
-              width: '100%', height: 54,
-              fontFamily: "'Cormorant Garamond', serif", fontSize: 17, fontWeight: 400,
-              letterSpacing: '0.05em',
-              background: 'linear-gradient(135deg, var(--accent) 0%, var(--gold) 100%)',
-              color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer',
-              opacity: perfumes.length === 0 || loading ? 0.4 : 1,
-            }}
-          >
-            {loading ? '분석 중...' : '취향 분석하고 추천받기 →'}
-          </button>
         </div>
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '2rem 0', color: 'var(--ink-muted)', fontSize: 13, fontStyle: 'italic' }}>
-            <div style={{
-              width: 20, height: 20, border: '1.5px solid var(--border)',
-              borderTopColor: 'var(--gold)', borderRadius: '50%',
-              animation: 'spin 0.9s linear infinite', flexShrink: 0,
-            }} />
-            취향을 분석하고 있어요...
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <p style={{ fontSize: 13, color: '#9B3A3A', background: '#FDF0F0', border: '1px solid #F0C8C8', borderRadius: 4, padding: '12px 16px', marginTop: '1.5rem' }}>
-            {error}
+        {/* ── 싫어하는 향수 카드 ── */}
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
+          padding: '20px', marginBottom: 12, boxShadow: 'var(--shadow-sm)',
+          animation: 'fadeUp 0.45s 0.08s ease both',
+        }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)',
+            marginBottom: 4 }}>내가 싫어하는 향수 <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-tertiary)' }}>선택</span></p>
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12, lineHeight: 1.5 }}>
+            비슷한 계열을 추천에서 제외할게요
           </p>
+
+          <div style={{ marginBottom: 14 }}>
+            <PerfumeInput
+              onAdd={p => { if (!dislikedPerfumes.includes(p)) setDislikedPerfumes(prev => [...prev, p]) }}
+              placeholder="향수명 또는 브랜드 검색..."
+              variant="disliked"
+              excludes={dislikedPerfumes}
+              maxReached={dislikedPerfumes.length >= 10}
+            />
+          </div>
+
+          {dislikedPerfumes.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+              {dislikedPerfumes.map((p, i) => (
+                <div key={i} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  padding: '5px 12px', background: 'var(--red-subtle)',
+                  border: '1px solid rgba(224,69,74,0.2)', borderRadius: 99,
+                  fontSize: 13, fontWeight: 500, color: 'var(--red)',
+                  animation: 'tagIn 0.18s ease both',
+                }}>
+                  <span>{p}</span>
+                  <span onClick={() => removeDisliked(i)}
+                    style={{ fontSize: 15, cursor: 'pointer', lineHeight: 1, opacity: 1, transition: 'opacity 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '0.5'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                  >×</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+            {dislikedPerfumes.length === 0
+              ? '입력하지 않아도 돼요'
+              : `${dislikedPerfumes.length}개 제외됨`}
+          </p>
+        </div>
+
+        {/* ── 상황 선택 카드 ── */}
+        <div style={{
+          background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
+          padding: '20px', marginBottom: 12, boxShadow: 'var(--shadow-sm)',
+          animation: 'fadeUp 0.45s 0.1s ease both',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center', marginBottom: 12 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>
+              오늘 어떤 자리예요?
+            </p>
+            {situation && (
+              <button
+                onClick={() => setSituation(null)}
+                style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none',
+                  border: 'none', cursor: 'pointer', padding: 0 }}>
+                초기화
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {SITUATIONS.map(s => {
+              const active = situation === s.label
+              return (
+                <button
+                  key={s.label}
+                  onClick={() => setSituation(active ? null : s.label)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+                    fontFamily: 'inherit', cursor: 'pointer', transition: 'all 0.15s',
+                    background: active ? 'var(--primary)' : 'var(--bg)',
+                    color: active ? '#fff' : 'var(--text-secondary)',
+                    border: active ? '1.5px solid var(--primary)' : '1.5px solid var(--border)',
+                  }}
+                >
+                  <span>{s.emoji}</span>
+                  <span>{s.label}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 10 }}>
+            {situation ? `${situation} 자리에 어울리는 향수를 추천해드려요` : '선택하지 않으면 전반적인 취향으로 추천해드려요'}
+          </p>
+        </div>
+
+        {/* ── 에러 ── */}
+        {error && (
+          <div style={{
+            background: 'var(--red-subtle)', border: '1px solid #FFC9CD',
+            borderRadius: 'var(--radius-sm)', padding: '12px 14px',
+            fontSize: 14, color: 'var(--red)', marginBottom: 12,
+            animation: 'fadeUp 0.3s ease both',
+          }}>{error}</div>
         )}
 
-        {/* Results */}
+        {/* ── CTA ── */}
+        <button
+          onClick={handleRecommend}
+          disabled={perfumes.length === 0 || loading}
+          style={{
+            width: '100%', height: 54, fontSize: 16, fontWeight: 700,
+            fontFamily: 'inherit', letterSpacing: '-0.2px',
+            background: loading
+              ? 'linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 50%, var(--primary) 100%)'
+              : 'var(--primary)',
+            backgroundSize: loading ? '200% auto' : '100%',
+            animation: loading ? 'shimmer 1.6s linear infinite' : 'none',
+            color: '#fff', border: 'none', borderRadius: 'var(--radius-md)',
+            cursor: perfumes.length === 0 || loading ? 'default' : 'pointer',
+            opacity: perfumes.length === 0 ? 0.38 : 1,
+            transition: 'opacity 0.2s',
+          }}
+        >
+          {loading
+            ? '취향 분석 중···'
+            : situation
+              ? `${situation} 향수 추천받기`
+              : '취향 분석하고 추천받기'}
+        </button>
+
+        {/* ── 결과 ── */}
         {result && (
-          <div style={{ marginTop: '3rem', animation: 'fadeUp 0.6s ease both' }}>
-            {/* Taste summary */}
+          <div style={{ marginTop: 32, animation: 'fadeUp 0.4s ease both' }}>
+
+            {/* 취향 프로필 */}
             <div style={{
-              background: 'var(--ink)', color: 'var(--cream)', borderRadius: 8,
-              padding: '1.75rem', marginBottom: '2rem', position: 'relative', overflow: 'hidden',
+              background: 'var(--surface)',
+              border: '1.5px solid rgba(160,82,122,0.18)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '20px', marginBottom: 12, boxShadow: 'var(--shadow-sm)',
             }}>
-              <p style={{ fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase', color: 'var(--gold)', marginBottom: '0.75rem' }}>
-                당신의 취향 프로필
-              </p>
-              <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 17, fontWeight: 300, fontStyle: 'italic', lineHeight: 1.75 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--primary)' }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--primary)',
+                  letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  나의 취향 프로필{situation ? ` · ${situation}` : ''}
+                </span>
+              </div>
+              <p style={{ fontSize: 15, lineHeight: 1.75, color: 'var(--text-primary)' }}>
                 {result.taste_summary}
               </p>
             </div>
 
-            {/* Recommendations */}
-            <p style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--ink-muted)', marginBottom: '1.25rem' }}>
-              추천 향수
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: '4rem' }}>
-              {result.recommendations.map((r, i) => (
-                <div key={i} style={{
-                  background: 'var(--card-bg)', border: '1px solid var(--border)',
-                  borderRadius: 8, padding: '1.25rem 1.5rem',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 20, fontWeight: 400, color: 'var(--ink)' }}>
-                      {r.name}
-                    </div>
-                    <div style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'var(--gold)', marginLeft: '1rem', flexShrink: 0 }}>
-                      {r.brand}
-                    </div>
-                  </div>
-                  <p style={{ fontSize: 13, fontWeight: 300, color: 'var(--ink-muted)', lineHeight: 1.7, marginBottom: 12 }}>
-                    {r.reason}
-                  </p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {r.notes.map((n, j) => (
-                      <span key={j} style={{
-                        fontSize: 11, padding: '3px 10px', borderRadius: 99,
-                        background: 'var(--cream-dark)', color: 'var(--accent)',
-                        border: '1px solid rgba(139,111,94,0.2)',
-                      }}>
-                        {n}
-                      </span>
-                    ))}
-                  </div>
+            {/* 추천 향수 */}
+            <p style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)',
+              marginBottom: 10, letterSpacing: '-0.3px' }}>추천 향수</p>
+
+            {result.recommendations.map((r, i) => (
+              <div
+                key={i}
+                onMouseEnter={e => {
+                  e.currentTarget.style.boxShadow = 'var(--shadow-md)'
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.boxShadow = 'var(--shadow-sm)'
+                  e.currentTarget.style.transform = 'none'
+                }}
+                style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-lg)', padding: '18px 20px',
+                  marginBottom: 10, boxShadow: 'var(--shadow-sm)',
+                  transition: 'box-shadow 0.2s, transform 0.2s',
+                  animation: 'fadeUp 0.4s ease both',
+                  animationDelay: `${i * 0.07}s`,
+                }}
+              >
+                {/* 인덱스 + 브랜드 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)',
+                    letterSpacing: '0.08em' }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)' }}>
+                    {r.brand}
+                  </span>
                 </div>
-              ))}
-            </div>
+
+                <div style={{ height: 1, background: 'var(--border)', marginBottom: 12 }} />
+
+                {/* 향수명 */}
+                <p style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)',
+                  marginBottom: 8, letterSpacing: '-0.4px', lineHeight: 1.25 }}>
+                  {r.name}
+                </p>
+
+                {/* 추천 이유 */}
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)',
+                  lineHeight: 1.7, marginBottom: 16 }}>
+                  {r.reason}
+                </p>
+
+                {/* ── 노트 피라미드 ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {NOTE_LAYERS.map(layer => {
+                    const notes = r[layer.key]
+                    if (!notes || notes.length === 0) return null
+                    return (
+                      <div key={layer.key} style={{
+                        background: layer.bg, borderRadius: 8, padding: '10px 12px',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center',
+                          gap: 6, marginBottom: 7 }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, color: layer.color,
+                            letterSpacing: '0.06em', textTransform: 'uppercase',
+                          }}>{layer.label}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-tertiary)',
+                            fontWeight: 500 }}>{layer.sublabel}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                          {notes.map((n, j) => (
+                            <span key={j} style={{
+                              fontSize: 12, fontWeight: 500,
+                              padding: '3px 9px', borderRadius: 99,
+                              background: 'rgba(255,255,255,0.7)',
+                              color: 'var(--text-primary)',
+                              border: `1px solid ${layer.color}40`,
+                            }}>{n}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
+
       </div>
-    </main>
+    </div>
   )
 }

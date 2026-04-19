@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import PerfumeInput from './components/PerfumeInput'
 
 interface Recommendation {
@@ -33,6 +34,7 @@ const NOTE_LAYERS = [
 ]
 
 export default function Home() {
+  const router = useRouter()
   const [perfumes, setPerfumes] = useState<string[]>([])
   const [dislikedPerfumes, setDislikedPerfumes] = useState<string[]>([])
   const [situation, setSituation] = useState<string | null>(null)
@@ -41,6 +43,17 @@ export default function Home() {
   const [error, setError] = useState('')
   const isFirstRender = useRef(true)
   const isFirstRenderDisliked = useRef(true)
+
+  // 온보딩 체크: 최초 방문이면 /onboarding으로 이동
+  useEffect(() => {
+    try {
+      const done = localStorage.getItem('onboarding_complete')
+      const saved = JSON.parse(localStorage.getItem('my_perfumes') ?? '[]')
+      if (!done && saved.length === 0) {
+        router.replace('/onboarding')
+      }
+    } catch {}
+  }, [router])
 
   useEffect(() => {
     try {
@@ -76,10 +89,18 @@ export default function Home() {
     if (perfumes.length === 0) return
     setLoading(true); setResult(null); setError('')
     try {
+      const likedFamilies   = JSON.parse(localStorage.getItem('liked_families')    ?? '[]')
+      const dislikedFamilies = JSON.parse(localStorage.getItem('disliked_families') ?? '[]')
       const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ perfumes, dislikedPerfumes: dislikedPerfumes.length > 0 ? dislikedPerfumes : undefined, situation }),
+        body: JSON.stringify({
+          perfumes,
+          dislikedPerfumes:  dislikedPerfumes.length  > 0 ? dislikedPerfumes  : undefined,
+          likedFamilies:     likedFamilies.length     > 0 ? likedFamilies     : undefined,
+          dislikedFamilies:  dislikedFamilies.length  > 0 ? dislikedFamilies  : undefined,
+          situation,
+        }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()

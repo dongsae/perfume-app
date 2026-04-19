@@ -27,7 +27,7 @@ export interface RecommendResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const { perfumes, dislikedPerfumes, situation } = await req.json()
+    const { perfumes, dislikedPerfumes, likedFamilies, dislikedFamilies, situation } = await req.json()
 
     if (!perfumes || perfumes.length === 0) {
       return NextResponse.json({ error: '향수를 입력해주세요.' }, { status: 400 })
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const msg = await anthropic!.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
-      messages: [{ role: 'user', content: buildPrompt(perfumes, situation, dislikedPerfumes) }],
+      messages: [{ role: 'user', content: buildPrompt(perfumes, situation, dislikedPerfumes, likedFamilies, dislikedFamilies) }],
     })
 
     const raw = msg.content.map(b => ('text' in b ? b.text : '')).join('')
@@ -77,7 +77,23 @@ async function saveToSupabase(inputPerfumes: string[], result: RecommendResult) 
   })
 }
 
-function buildPrompt(perfumes: string[], situation?: string, dislikedPerfumes?: string[]): string {
+const FAMILY_KO: Record<string, string> = {
+  floral:   '플로럴 (장미, 자스민, 피오니)',
+  woody:    '우디 (샌달우드, 시더, 베티버)',
+  citrus:   '시트러스 (베르가못, 유자, 레몬)',
+  musky:    '머스키 (화이트 머스크, 파우더리)',
+  oriental: '오리엔탈/앰버 (바닐라, 앰버, 우드)',
+  green:    '그린/아쿠아틱 (씨솔트, 바이올렛 리프, 이끼)',
+  fruity:   '프루티/구르망 (피치, 체리, 캐러멜)',
+}
+
+function buildPrompt(
+  perfumes: string[],
+  situation?: string,
+  dislikedPerfumes?: string[],
+  likedFamilies?: string[],
+  dislikedFamilies?: string[],
+): string {
   const situationLine = situation
     ? `\n추천 상황: ${situation} — 이 상황에 특히 어울리는 향수를 우선적으로 추천해줘.`
     : ''
@@ -86,7 +102,15 @@ function buildPrompt(perfumes: string[], situation?: string, dislikedPerfumes?: 
     ? `\n싫어하는 향수: ${dislikedPerfumes.join(', ')} — 이 향수들과 비슷한 향 계열(노트, 분위기, 무드)은 절대 추천하지 마. 취향 요약에도 이 점을 반영해줘.`
     : ''
 
-  return `사용자가 좋아하는 향수 목록: ${perfumes.join(', ')}${dislikedLine}${situationLine}
+  const likedFamilyLine = likedFamilies && likedFamilies.length > 0
+    ? `\n선호 향조: ${likedFamilies.map(f => FAMILY_KO[f] ?? f).join(', ')} — 이 향조 계열을 중심으로 추천해줘.`
+    : ''
+
+  const dislikedFamilyLine = dislikedFamilies && dislikedFamilies.length > 0
+    ? `\n기피 향조: ${dislikedFamilies.map(f => FAMILY_KO[f] ?? f).join(', ')} — 이 향조 계열은 추천에서 제외해줘.`
+    : ''
+
+  return `사용자가 좋아하는 향수 목록: ${perfumes.join(', ')}${likedFamilyLine}${dislikedFamilyLine}${dislikedLine}${situationLine}
 
 위 향수들을 분석해서 사용자의 향수 취향을 파악하고, 입력한 향수와 겹치지 않는 향수 5개를 추천해줘.
 
